@@ -73,23 +73,6 @@ chrome://settings/content/popups
 https://www.bigmodel.cn
 ```
 
-## 维护
-
-语法检查：
-
-```bash
-npm run check
-```
-
-版本发布建议：
-
-1. 修改 `bigmodel-coding-plan-watcher.user.js`。
-2. 更新脚本头部的 `@version`。
-3. 更新脚本内的 `VERSION` 和面板标题。
-4. 在 `CHANGELOG.md` 记录变化。
-5. 运行 `npm run check`。
-6. 提交到 GitHub。
-
 ## 风险和边界
 
 这个脚本只做浏览器页面层面的辅助操作，不保证成功购买。不要把刷新频率调得过高，否则可能触发站点限制、导致页面异常或账号风控。
