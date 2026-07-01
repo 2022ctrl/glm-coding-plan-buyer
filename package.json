@@ -1,0 +1,15 @@
+{
+  "name": "glm-coding-plan-buyer",
+  "version": "4.2.0",
+  "private": true,
+  "description": "Human-in-loop Tampermonkey watcher for BigModel GLM Coding Plan.",
+  "scripts": {
+    "check": "node --check bigmodel-coding-plan-watcher.user.js"
+  },
+  "keywords": [
+    "tampermonkey",
+    "bigmodel",
+    "glm-coding"
+  ],
+  "license": "MIT"
+}

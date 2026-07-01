@@ -1,0 +1,95 @@
+# GLM Coding Plan 抢购助手
+
+这是一个用于 BigModel GLM Coding Plan 页面的人机协同油猴脚本。它可以监控套餐卡片、在可购买按钮出现时提醒并尝试点击订阅按钮，但验证码、协议确认和付款仍然需要你手动完成。
+
+> 说明：脚本不绕过验证码、支付、排队、风控或服务端限制。库存是否能抢到主要取决于官方放量、网络、账号状态和页面返回结果。
+
+## 当前目标
+
+默认配置偏向：
+
+- 套餐：Pro
+- 周期：连续包季
+- 页面：个人套餐
+- 冲刺刷新窗口：09:55 到 10:20
+- 多开协同：当前页 + 4 个新标签页
+
+这些配置都可以在脚本面板里修改。
+
+## 安装
+
+1. 浏览器安装 Tampermonkey。
+2. 打开 Tampermonkey 管理面板，新建脚本。
+3. 复制 `bigmodel-coding-plan-watcher.user.js` 的全部内容并粘贴进去。
+4. 保存脚本。
+5. 打开 `https://www.bigmodel.cn/glm-coding?plantype=personal`。
+6. 页面左侧出现 `GLM 抢购助手` 面板后，按需要开启监控或冲刺刷新。
+
+## GitHub Raw 安装方式
+
+仓库推到 GitHub 后，可以用 Raw 链接安装：
+
+```text
+https://raw.githubusercontent.com/<你的用户名>/<仓库名>/main/bigmodel-coding-plan-watcher.user.js
+```
+
+如果仓库名设置为 `glm-coding-plan-buyer`，链接大概会是：
+
+```text
+https://raw.githubusercontent.com/<你的用户名>/glm-coding-plan-buyer/main/bigmodel-coding-plan-watcher.user.js
+```
+
+## 功能
+
+- 监控套餐卡片状态
+- 支持 Lite / Pro / Max 优先级配置
+- 支持连续包月 / 连续包季 / 连续包年优先级配置
+- 支持自动点击订阅按钮
+- 支持常见弹窗自动关闭
+- 支持声音提醒和浏览器通知
+- 支持 09:55-10:20 冲刺刷新
+- 支持 5 页协同刷新
+- 多页面共享点击锁，避免多个页面同时进入下单流程
+- 日志面板记录当前判断结果
+
+## 多开说明
+
+点击 `一键多开 5 页` 后：
+
+- 当前页面算第 1 页
+- 脚本会尝试再打开 4 个新标签页
+- 如果只打开 1 个，多半是 Chrome 拦截了弹窗
+- 需要在地址栏右侧允许 `bigmodel.cn` 的弹出式窗口和重定向
+
+Chrome 也可以手动打开：
+
+```text
+chrome://settings/content/popups
+```
+
+然后把下面域名加入允许列表：
+
+```text
+https://www.bigmodel.cn
+```
+
+## 维护
+
+语法检查：
+
+```bash
+npm run check
+```
+
+版本发布建议：
+
+1. 修改 `bigmodel-coding-plan-watcher.user.js`。
+2. 更新脚本头部的 `@version`。
+3. 更新脚本内的 `VERSION` 和面板标题。
+4. 在 `CHANGELOG.md` 记录变化。
+5. 运行 `npm run check`。
+6. 提交到 GitHub。
+
+## 风险和边界
+
+这个脚本只做浏览器页面层面的辅助操作，不保证成功购买。不要把刷新频率调得过高，否则可能触发站点限制、导致页面异常或账号风控。
