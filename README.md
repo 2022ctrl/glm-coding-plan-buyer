@@ -27,16 +27,8 @@
 
 ## GitHub Raw 安装方式
 
-仓库推到 GitHub 后，可以用 Raw 链接安装：
-
 ```text
-https://raw.githubusercontent.com/<你的用户名>/<仓库名>/main/bigmodel-coding-plan-watcher.user.js
-```
-
-如果仓库名设置为 `glm-coding-plan-buyer`，链接大概会是：
-
-```text
-https://raw.githubusercontent.com/<你的用户名>/glm-coding-plan-buyer/main/bigmodel-coding-plan-watcher.user.js
+https://raw.githubusercontent.com/2022ctrl/glm-coding-plan-buyer/main/bigmodel-coding-plan-watcher.user.js
 ```
 
 ## 功能
@@ -47,8 +39,10 @@ https://raw.githubusercontent.com/<你的用户名>/glm-coding-plan-buyer/main/b
 - 支持自动点击订阅按钮
 - 支持常见弹窗自动关闭
 - 支持声音提醒和浏览器通知
+- 支持服务器时间校准和 10:00 倒计时
 - 支持 09:55-10:20 冲刺刷新
-- 支持 5 页协同刷新
+- 支持页面健康检查，套餐卡片迟迟未加载时会触发健康刷新
+- 支持 5 页协同刷新和在线页状态显示
 - 多页面共享点击锁，避免多个页面同时进入下单流程
 - 日志面板记录当前判断结果
 

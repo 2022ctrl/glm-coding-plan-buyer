@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLM Coding Smart Buyer
 // @namespace    local.codex.bigmodel
-// @version      4.2.0
+// @version      4.3.0
 // @description  Human-in-loop watcher for BigModel GLM Coding plans. Can click buy/subscribe, but CAPTCHA/payment stay manual.
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/glm-coding*
@@ -19,18 +19,21 @@
   const CONFIG_KEY = 'glm-smart-buyer-config-v4';
   const LOG_KEY = 'glm-smart-buyer-logs-v4';
   const CLICK_LOCK_KEY = 'glm-smart-buyer-clicked-at-v4';
+  const SERVER_SYNC_KEY = 'glm-smart-buyer-server-sync-v4';
+  const HEARTBEAT_KEY = 'glm-smart-buyer-heartbeats-v4';
   const PANEL_ID = 'glm-smart-buyer-panel';
-  const VERSION = '4.2.0';
+  const VERSION = '4.3.0';
   const MULTI_TAB_COUNT = 5;
   const TAB_ID = getTabId();
 
   const TEXT = {
-    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.2.0',
+    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.0',
     start: '\u5f00\u59cb\u76d1\u63a7',
     stop: '\u505c\u6b62\u76d1\u63a7',
     rushStart: '\u5f00\u542f\u51b2\u523a\u5237\u65b0',
     rushStop: '\u5173\u95ed\u51b2\u523a\u5237\u65b0',
     manualRefresh: '\u624b\u52a8\u5237\u65b0',
+    calibrate: '\u6821\u51c6\u65f6\u95f4',
     multiOpen: '\u4e00\u952e\u591a\u5f00 5 \u9875',
     tabLabel: '\u9875\u9762',
     locked: '\u5176\u5b83\u9875\u9762\u5df2\u8fdb\u5165\u4e0b\u5355\uff0c\u672c\u9875\u5df2\u505c\u6b62',
@@ -39,6 +42,7 @@
     autoClick: '\u81ea\u52a8\u70b9\u8ba2\u9605',
     autoPopup: '\u81ea\u52a8\u5173\u95ed\u5e38\u89c1\u5f39\u7a97',
     sound: '\u58f0\u97f3\u63d0\u793a',
+    syncServerTime: '\u670d\u52a1\u5668\u6821\u65f6',
     notify: '\u901a\u77e5\u63d0\u793a',
     status: '\u72b6\u6001',
     diag: '\u8bca\u65ad',
@@ -58,7 +62,19 @@
     personal: '\u4e2a\u4eba\u5957\u9910',
     month: '\u8fde\u7eed\u5305\u6708',
     quarter: '\u8fde\u7eed\u5305\u5b63',
-    year: '\u8fde\u7eed\u5305\u5e74'
+    year: '\u8fde\u7eed\u5305\u5e74',
+    healthOk: '\u9875\u9762\u6b63\u5e38',
+    healthLoading: '\u7b49\u5f85\u9875\u9762\u52a0\u8f7d',
+    healthStale: '\u9875\u9762\u7591\u4f3c\u5361\u4f4f',
+    serverTime: '\u670d\u52a1\u5668\u65f6\u95f4',
+    countdown: '\u8ddd 10:00',
+    latency: '\u5ef6\u8fdf',
+    offset: '\u504f\u79fb',
+    onlineTabs: '\u5728\u7ebf\u9875',
+    syncOk: '\u6821\u65f6\u5b8c\u6210',
+    syncFail: '\u6821\u65f6\u5931\u8d25',
+    pageReload: '\u9875\u9762\u5065\u5eb7\u5237\u65b0',
+    rushReload: '\u51b2\u523a\u5237\u65b0'
   };
 
   const DEFAULT_CONFIG = {
@@ -68,11 +84,13 @@
     autoPopup: true,
     sound: true,
     notify: true,
+    syncServerTime: true,
     packages: ['Pro'],
     periods: ['quarter'],
     rushStart: '09:55',
     rushEnd: '10:20',
-    scanMs: 220
+    targetTime: '10:00:00',
+    scanMs: 240
   };
 
   const PACKAGE_ORDER = ['Pro', 'Max', 'Lite'];
@@ -107,6 +125,11 @@
     catch (_) { return { ...DEFAULT_CONFIG }; }
   }
   function saveConfig() { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); }
+  function loadServerSync() {
+    try { return { offsetMs: 0, latencyMs: 0, updatedAt: 0, error: '', ...(JSON.parse(localStorage.getItem(SERVER_SYNC_KEY) || '{}')) }; }
+    catch (_) { return { offsetMs: 0, latencyMs: 0, updatedAt: 0, error: '' }; }
+  }
+  function saveServerSync() { localStorage.setItem(SERVER_SYNC_KEY, JSON.stringify(serverSync)); }
   function normalize(text) { return String(text || '').replace(/\s+/g, ' ').trim(); }
   function escapeHtml(text) { return String(text || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
   function addLog(message) {
@@ -118,6 +141,7 @@
     renderPanel();
   }
   function readLogs() { try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (_) { return []; } }
+  function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
   function isVisible(element) {
     if (!element) return false;
     const style = getComputedStyle(element);
@@ -131,20 +155,111 @@
     if (!button) return 'button=null';
     return ['text=' + (normalize(button.textContent) || '(empty)'), 'disabled=' + Boolean(button.disabled), 'aria=' + (button.getAttribute('aria-disabled') || 'null'), 'enabled=' + isEnabled(button), 'visible=' + isVisible(button), 'class=' + (button.className || '(none)')].join(' | ');
   }
-  function secondsOfDay(timeText) { const match = /^(\d{1,2}):(\d{2})$/.exec(timeText); return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 : 0; }
-  function nowChinaSeconds() {
-    const text = new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const parts = text.split(':').map(Number);
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  function secondsOfDay(timeText) {
+    const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeText || '');
+    return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] || 0) : 0;
   }
+  function chinaParts(ms) {
+    const parts = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(new Date(ms)).forEach((part) => { if (part.type !== 'literal') parts[part.type] = Number(part.value); });
+    if (parts.hour === 24) parts.hour = 0;
+    return parts;
+  }
+  function serverNowMs() { return Date.now() + (cfg.syncServerTime ? Number(serverSync.offsetMs || 0) : 0); }
+  function nowChinaSeconds() {
+    const parts = chinaParts(serverNowMs());
+    return parts.hour * 3600 + parts.minute * 60 + parts.second;
+  }
+  function targetTodayMs() {
+    const parts = chinaParts(serverNowMs());
+    const target = secondsOfDay(cfg.targetTime || DEFAULT_CONFIG.targetTime);
+    const hour = Math.floor(target / 3600);
+    const minute = Math.floor((target % 3600) / 60);
+    const second = target % 60;
+    return Date.UTC(parts.year, parts.month - 1, parts.day, hour - 8, minute, second, 0);
+  }
+  function countdownMs() { return targetTodayMs() - serverNowMs(); }
   function inRushWindow() { const now = nowChinaSeconds(); return now >= secondsOfDay(cfg.rushStart) && now <= secondsOfDay(cfg.rushEnd); }
-  function tabOffsetMs() { return ((TAB_ID - 1) % MULTI_TAB_COUNT) * 450; }
+  function tabOffsetMs() { return ((TAB_ID - 1) % MULTI_TAB_COUNT) * 420; }
+  function jitter(min, max) { return min + Math.random() * (max - min); }
   function rushDelayMs() {
     if (!inRushWindow()) return null;
-    const delta = nowChinaSeconds() - 10 * 3600;
-    if (delta >= -30 && delta <= 150) return 1200 + Math.random() * 1000 + tabOffsetMs();
-    if (delta < -30) return 3500 + Math.random() * 2200 + tabOffsetMs();
-    return 3200 + Math.random() * 2600 + tabOffsetMs();
+    const delta = countdownMs();
+    if (delta > 5 * 60 * 1000) return jitter(5200, 7200) + tabOffsetMs();
+    if (delta > 60 * 1000) return jitter(3400, 4800) + tabOffsetMs();
+    if (delta > 10 * 1000) return jitter(1800, 2600) + tabOffsetMs();
+    if (delta > -2 * 60 * 1000) return jitter(1050, 1650) + tabOffsetMs();
+    return jitter(2500, 4200) + tabOffsetMs();
+  }
+  function formatClock(ms) {
+    const p = chinaParts(ms);
+    return String(p.hour).padStart(2, '0') + ':' + String(p.minute).padStart(2, '0') + ':' + String(p.second).padStart(2, '0');
+  }
+  function formatDuration(ms) {
+    const sign = ms < 0 ? '+' : '-';
+    const abs = Math.abs(ms);
+    const min = Math.floor(abs / 60000);
+    const sec = Math.floor((abs % 60000) / 1000);
+    const dec = Math.floor((abs % 1000) / 100);
+    if (min > 0) return sign + min + 'm' + String(sec).padStart(2, '0') + 's';
+    return sign + sec + '.' + dec + 's';
+  }
+  function syncAgeText() {
+    if (!serverSync.updatedAt) return '\u672a\u6821\u51c6';
+    const age = Math.max(0, Math.round((Date.now() - serverSync.updatedAt) / 1000));
+    return age < 60 ? age + 's \u524d' : Math.round(age / 60) + 'm \u524d';
+  }
+  async function probeServerTime() {
+    const url = location.origin + '/glm-coding?glm_probe=' + Date.now();
+    const perfStart = performance.now();
+    const localStart = Date.now();
+    let response;
+    try {
+      response = await fetch(url, { method: 'HEAD', credentials: 'include', cache: 'no-store' });
+    } catch (_) {
+      response = await fetch(url, { method: 'GET', credentials: 'include', cache: 'no-store' });
+    }
+    const perfEnd = performance.now();
+    const localEnd = Date.now();
+    const dateHeader = response.headers.get('date');
+    if (!dateHeader) throw new Error('missing Date header');
+    const serverMs = new Date(dateHeader).getTime();
+    if (!Number.isFinite(serverMs)) throw new Error('invalid Date header');
+    const rttMs = Math.max(0, Math.round(perfEnd - perfStart));
+    const localMidMs = (localStart + localEnd) / 2;
+    const estimatedServerAtMid = serverMs + rttMs / 2;
+    return { latencyMs: rttMs, offsetMs: Math.round(estimatedServerAtMid - localMidMs) };
+  }
+  async function calibrateServerTime(force) {
+    if (!cfg.syncServerTime && !force) return;
+    if (calibrationInFlight) return;
+    if (!force && serverSync.updatedAt && Date.now() - serverSync.updatedAt < 90000) return;
+    calibrationInFlight = true;
+    try {
+      const probes = [];
+      for (let i = 0; i < 3; i += 1) {
+        try { probes.push(await probeServerTime()); } catch (_) {}
+        if (i < 2) await sleep(250);
+      }
+      if (!probes.length) throw new Error('all probes failed');
+      probes.sort((a, b) => a.latencyMs - b.latencyMs);
+      const keep = probes.slice(0, Math.max(1, Math.ceil(probes.length * 0.67)));
+      const latencyMs = Math.round(keep.reduce((sum, item) => sum + item.latencyMs, 0) / keep.length);
+      const offsetMs = Math.round(keep.reduce((sum, item) => sum + item.offsetMs, 0) / keep.length);
+      serverSync = { latencyMs, offsetMs, updatedAt: Date.now(), error: '' };
+      saveServerSync();
+      addLog(TEXT.syncOk + ': ' + TEXT.latency + ' ' + latencyMs + 'ms, ' + TEXT.offset + ' ' + offsetMs + 'ms');
+    } catch (error) {
+      serverSync = { ...serverSync, updatedAt: serverSync.updatedAt || 0, error: String(error && error.message || error) };
+      saveServerSync();
+      addLog(TEXT.syncFail + ': ' + serverSync.error);
+    } finally {
+      calibrationInFlight = false;
+      renderPanel();
+    }
   }
   function hasCards() { return document.querySelectorAll('.package-list.glm-coding-package-list .package-card-box').length > 0; }
   function selectedPackages() { const selected = new Set(cfg.packages || []); return PACKAGE_ORDER.filter((name) => selected.has(name)); }
@@ -222,6 +337,30 @@
       });
     } catch (_) {}
   }
+  function readHeartbeats() {
+    let data = {};
+    try { data = JSON.parse(localStorage.getItem(HEARTBEAT_KEY) || '{}') || {}; } catch (_) { data = {}; }
+    const now = Date.now();
+    let changed = false;
+    for (const key of Object.keys(data)) {
+      if (!data[key] || now - Number(data[key].ts || 0) > 45000) { delete data[key]; changed = true; }
+    }
+    if (changed) localStorage.setItem(HEARTBEAT_KEY, JSON.stringify(data));
+    return data;
+  }
+  function writeHeartbeat() {
+    const data = readHeartbeats();
+    data[String(TAB_ID)] = { ts: Date.now(), status: lastStatus, health: lastHealth, nextReloadAt, enabled: !!cfg.enabled, rush: !!cfg.rush };
+    localStorage.setItem(HEARTBEAT_KEY, JSON.stringify(data));
+  }
+  function heartbeatSummary() {
+    const data = readHeartbeats();
+    return Object.keys(data).map(Number).sort((a, b) => a - b).map((id) => {
+      const item = data[String(id)] || {};
+      const mark = item.enabled ? (item.rush ? 'R' : 'W') : 'S';
+      return id + mark;
+    }).join(', ') || '-';
+  }
   function scan() {
     lastScanAt = Date.now();
     const sharedClickAt = Number(localStorage.getItem(CLICK_LOCK_KEY) || 0);
@@ -231,11 +370,24 @@
       saveConfig();
       stopTimers();
       lastStatus = TEXT.locked;
+      lastHealth = TEXT.healthOk;
+      writeHeartbeat();
       renderPanel();
       return;
     }
     closeNoisePopups();
-    if (!hasCards()) { lastStatus = TEXT.waitCards; lastDiag = '-'; scheduleReload(); renderPanel(); return; }
+    if (!hasCards()) {
+      cardMissCount += 1;
+      lastStatus = TEXT.waitCards;
+      lastHealth = cardMissCount >= 3 ? TEXT.healthStale : TEXT.healthLoading;
+      lastDiag = 'cards=0, miss=' + cardMissCount;
+      scheduleReload(cardMissCount >= 2, TEXT.pageReload);
+      writeHeartbeat();
+      renderPanel();
+      return;
+    }
+    cardMissCount = 0;
+    lastHealth = TEXT.healthOk;
     const target = currentTargetState();
     lastDiag = target.diag || '-';
     if (target.state === 'available') {
@@ -245,31 +397,40 @@
         const lastClick = Number(localStorage.getItem(CLICK_LOCK_KEY) || 0);
         if (Date.now() - lastClick > 60000) {
           localStorage.setItem(CLICK_LOCK_KEY, String(Date.now()));
-          cfg.enabled = false; cfg.rush = false; saveConfig(); stopTimers(); notifyFound(); target.button.click(); addLog(TEXT.clicked);
+          cfg.enabled = false;
+          cfg.rush = false;
+          saveConfig();
+          stopTimers();
+          notifyFound();
+          target.button.click();
+          addLog(TEXT.clicked);
         }
       }
+      writeHeartbeat();
       renderPanel();
       return;
     }
     if (target.state === 'crowded') lastStatus = TEXT.crowded;
     else if (target.state === 'selecting') lastStatus = TEXT.selecting;
     else lastStatus = TEXT.unavailable;
-    scheduleReload();
+    scheduleReload(false, TEXT.rushReload);
+    writeHeartbeat();
     renderPanel();
   }
   function queueScan() { if (queuedScan) return; queuedScan = true; setTimeout(() => { queuedScan = false; if (cfg.enabled) scan(); }, 30); }
-  function scheduleReload() {
+  function scheduleReload(allowNoCards, reason) {
     if (!cfg.enabled || !cfg.rush) return;
     if (reloadTimer) return;
     const delay = rushDelayMs();
     if (delay === null) { nextReloadAt = 0; return; }
-    if (!hasCards()) return;
+    if (!allowNoCards && !hasCards()) return;
     nextReloadAt = Date.now() + delay;
     reloadTimer = setTimeout(() => {
-      reloadTimer = undefined; nextReloadAt = 0;
+      reloadTimer = undefined;
+      nextReloadAt = 0;
       if (!cfg.enabled || !cfg.rush) return;
-      if (!hasCards()) return;
-      addLog('\u51b2\u523a\u5237\u65b0');
+      if (!allowNoCards && !hasCards()) return;
+      addLog(reason || TEXT.rushReload);
       location.reload();
     }, delay);
   }
@@ -280,7 +441,7 @@
     observer = new MutationObserver(queueScan);
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled', 'aria-disabled'] });
   }
-  function stopTimers() { clearInterval(scanTimer); clearTimeout(reloadTimer); if (observer) observer.disconnect(); scanTimer = undefined; reloadTimer = undefined; nextReloadAt = 0; observer = undefined; }
+  function stopTimers() { clearInterval(scanTimer); clearTimeout(reloadTimer); if (observer) observer.disconnect(); scanTimer = undefined; reloadTimer = undefined; nextReloadAt = 0; observer = undefined; writeHeartbeat(); }
   function setEnabled(enabled) {
     if (enabled) startTimers();
     else { cfg.enabled = false; cfg.rush = false; saveConfig(); stopTimers(); lastStatus = TEXT.stopped; addLog('\u76d1\u63a7\u5df2\u505c\u6b62'); renderPanel(); }
@@ -326,7 +487,7 @@
     if (enabled && !scanTimer) startTimers();
     if (!enabled) { clearTimeout(reloadTimer); reloadTimer = undefined; nextReloadAt = 0; }
     addLog(enabled ? '\u51b2\u523a\u5237\u65b0\u5df2\u5f00\u542f' : '\u51b2\u523a\u5237\u65b0\u5df2\u5173\u95ed');
-    scheduleReload(); renderPanel();
+    scheduleReload(false, TEXT.rushReload); writeHeartbeat(); renderPanel();
   }
   function toggleListValue(key, value) {
     const set = new Set(cfg[key] || []);
@@ -365,6 +526,7 @@
           else if (action === 'toggle-rush') setRush(!cfg.rush);
           else if (action === 'refresh') location.reload();
           else if (action === 'multi-open') openMultiTabs();
+          else if (action === 'calibrate') calibrateServerTime(true);
           else if (action === 'clear-log') { localStorage.setItem(LOG_KEY, '[]'); renderPanel(); }
           return;
         }
@@ -373,11 +535,13 @@
           const value = target.dataset.value;
           if (action === 'toggle-package') toggleListValue('packages', value);
           else if (action === 'toggle-period') toggleListValue('periods', value);
-          else if (action === 'toggle-option') { cfg[value] = target.checked; saveConfig(); renderPanel(); }
+          else if (action === 'toggle-option') { cfg[value] = target.checked; saveConfig(); if (value === 'syncServerTime' && target.checked) calibrateServerTime(true); renderPanel(); }
         }
       });
     }
     const next = nextReloadAt > Date.now() ? Math.ceil((nextReloadAt - Date.now()) / 1000) + 's' : '-';
+    const countdown = formatDuration(countdownMs());
+    const syncLine = TEXT.serverTime + ': ' + formatClock(serverNowMs()) + ' / ' + TEXT.latency + ': ' + Number(serverSync.latencyMs || 0) + 'ms / ' + TEXT.offset + ': ' + Number(serverSync.offsetMs || 0) + 'ms / ' + syncAgeText();
     const logs = readLogs().slice(0, 8).map((line) => '<div>' + escapeHtml(line) + '</div>').join('') || '<div>-</div>';
     const html = `
       <div style="font-weight:800;font-size:16px;margin-bottom:8px">${TEXT.title}</div>
@@ -389,9 +553,14 @@
         <button data-action="refresh" style="padding:7px;border:0;border-radius:8px;background:#2563eb;color:white;cursor:pointer">${TEXT.manualRefresh}</button>
         <button data-action="multi-open" style="padding:7px;border:0;border-radius:8px;background:#0891b2;color:white;cursor:pointer">${TEXT.multiOpen}</button>
       </div>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px">
+        <button data-action="calibrate" style="padding:7px;border:0;border-radius:8px;background:#4f46e5;color:white;cursor:pointer">${calibrationInFlight ? TEXT.calibrate + '...' : TEXT.calibrate}</button>
+      </div>
       <div style="color:#d1d5db;margin-bottom:6px">${TEXT.status}\uff1a${escapeHtml(lastStatus)}</div>
-      <div style="color:#a78bfa;margin-bottom:6px">${TEXT.tabLabel}\uff1a${TAB_ID}/${MULTI_TAB_COUNT}</div>
-      <div style="color:#fbbf24;margin-bottom:6px">${TEXT.nextRefresh}\uff1a${next} / ${TEXT.rushWindow}</div>
+      <div style="color:#86efac;margin-bottom:6px">\u9875\u9762\u5065\u5eb7\uff1a${escapeHtml(lastHealth)}</div>
+      <div style="color:#a78bfa;margin-bottom:6px">${TEXT.tabLabel}\uff1a${TAB_ID}/${MULTI_TAB_COUNT} / ${TEXT.onlineTabs}\uff1a${escapeHtml(heartbeatSummary())}</div>
+      <div style="color:#fbbf24;margin-bottom:6px">${TEXT.countdown}\uff1a${countdown} / ${TEXT.nextRefresh}\uff1a${next} / ${TEXT.rushWindow}</div>
+      <div style="color:#93c5fd;font-size:12px;word-break:break-all;margin-bottom:6px">${escapeHtml(syncLine)}</div>
       <div style="color:#93c5fd;font-size:12px;word-break:break-all;margin-bottom:10px">${TEXT.diag}\uff1a${escapeHtml(lastDiag)}</div>
       <div style="border-top:1px solid #374151;padding-top:8px;margin-top:8px">
         <div style="margin-bottom:5px;color:#e5e7eb">${TEXT.targetPackage}</div>
@@ -403,6 +572,7 @@
           <label><input type="checkbox" data-action="toggle-option" data-value="autoPopup" ${cfg.autoPopup ? 'checked' : ''}> ${TEXT.autoPopup}</label>
           <label><input type="checkbox" data-action="toggle-option" data-value="notify" ${cfg.notify ? 'checked' : ''}> ${TEXT.notify}</label>
           <label><input type="checkbox" data-action="toggle-option" data-value="sound" ${cfg.sound ? 'checked' : ''}> ${TEXT.sound}</label>
+          <label style="grid-column:1 / span 2"><input type="checkbox" data-action="toggle-option" data-value="syncServerTime" ${cfg.syncServerTime ? 'checked' : ''}> ${TEXT.syncServerTime}</label>
         </div>
       </div>
       <div style="border-top:1px solid #374151;padding-top:8px;margin-top:8px">
@@ -430,16 +600,31 @@
       if (!cfg.enabled) stopTimers();
       else if (!scanTimer) startTimers();
       renderPanel();
+    } else if (event.key === SERVER_SYNC_KEY) {
+      serverSync = loadServerSync();
+      renderPanel();
+    } else if (event.key === HEARTBEAT_KEY) {
+      renderPanel();
     }
   }
 
   function initialize() {
     renderPanel();
     window.addEventListener('storage', handleStorage);
+    if (cfg.syncServerTime) calibrateServerTime(false);
+    setInterval(() => { renderPanel(); }, 1000);
+    setInterval(() => { if ((cfg.enabled || cfg.rush) && cfg.syncServerTime) calibrateServerTime(false); }, 30000);
+    setInterval(() => { writeHeartbeat(); }, 2500);
     setInterval(() => { if (!document.getElementById(PANEL_ID)) renderPanel(); }, 2000);
     setInterval(() => { if (cfg.enabled && Date.now() - lastScanAt > 1200) renderPanel(); }, 1000);
+    writeHeartbeat();
     if (cfg.enabled) startTimers();
   }
+  window.addEventListener('beforeunload', () => {
+    const data = readHeartbeats();
+    delete data[String(TAB_ID)];
+    localStorage.setItem(HEARTBEAT_KEY, JSON.stringify(data));
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
   else initialize();
 })();
