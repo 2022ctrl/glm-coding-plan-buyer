@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLM Coding Smart Buyer
 // @namespace    local.codex.bigmodel
-// @version      4.3.0
+// @version      4.3.1
 // @description  Human-in-loop watcher for BigModel GLM Coding plans. Can click buy/subscribe, but CAPTCHA/payment stay manual.
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/glm-coding*
@@ -22,12 +22,12 @@
   const SERVER_SYNC_KEY = 'glm-smart-buyer-server-sync-v4';
   const HEARTBEAT_KEY = 'glm-smart-buyer-heartbeats-v4';
   const PANEL_ID = 'glm-smart-buyer-panel';
-  const VERSION = '4.3.0';
+  const VERSION = '4.3.1';
   const MULTI_TAB_COUNT = 5;
   const TAB_ID = getTabId();
 
   const TEXT = {
-    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.0',
+    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.1',
     start: '\u5f00\u59cb\u76d1\u63a7',
     stop: '\u505c\u6b62\u76d1\u63a7',
     rushStart: '\u5f00\u542f\u51b2\u523a\u5237\u65b0',
@@ -96,10 +96,11 @@
   const PACKAGE_ORDER = ['Pro', 'Max', 'Lite'];
   const PERIOD_ORDER = ['quarter', 'month', 'year'];
   const PERIOD_TEXT = { month: TEXT.month, quarter: TEXT.quarter, year: TEXT.year };
-  const NEGATIVE_TEXT = /(\u552e\u7f44|\u5df2\u552e\u5b8c|\u6682\u65e0\u5e93\u5b58|\u4e0d\u53ef\u8d2d\u4e70|\u656c\u8bf7\u671f\u5f85|\u5373\u5c06\u5f00\u653e|\u5df2\u7ed3\u675f|\u6682\u65f6\u552e\u7f44)/;
-  const CROWD_TEXT = /\u62a2\u8d2d\u4eba\u6570\u8fc7\u591a/;
+  const NEGATIVE_TEXT = /(\u552e\u7f44|\u5df2\u552e\u5b8c|\u6682\u65e0\u5e93\u5b58|\u4e0d\u53ef\u8d2d\u4e70|\u656c\u8bf7\u671f\u5f85|\u5373\u5c06\u5f00\u653e|\u5df2\u7ed3\u675f|\u6682\u65f6\u552e\u7f44|\u672a\u5f00\u552e|\u6682\u672a\u5f00\u552e)/;
+  const CROWD_TEXT = /(\u62a2\u8d2d\u4eba\u6570\u8fc7\u591a|\u5237\u65b0\u518d\u8bd5|\u4eba\u6570\u8fc7\u591a|\u7a0d\u540e\u518d\u8bd5)/;
 
   let cfg = loadConfig();
+  let serverSync = loadServerSync();
   let scanTimer;
   let reloadTimer;
   let nextReloadAt = 0;
@@ -107,7 +108,10 @@
   let queuedScan = false;
   let lastStatus = TEXT.stopped;
   let lastDiag = '-';
+  let lastHealth = TEXT.healthOk;
   let lastScanAt = 0;
+  let cardMissCount = 0;
+  let calibrationInFlight = false;
 
   console.info('[GLM Smart Buyer] userscript ' + VERSION + ' injected', location.href);
 

@@ -1,24 +1,29 @@
 # Changelog
 
+## 4.3.1
+
+- Fix v4.3.0 runtime initialization failure caused by missing state declarations.
+- Add a runtime smoke test path to verify that the userscript can create the panel in a minimal browser-like environment.
+
 ## 4.3.0
 
-- 增加服务器时间校准，面板显示服务器估算时间、延迟和本地偏移。
-- 增加 10:00 倒计时，并根据离开售时间的距离动态调整冲刺刷新间隔。
-- 增加页面健康检查，套餐卡片连续缺失时允许健康刷新，避免页面半加载卡住。
-- 增加多页心跳状态，面板可看到当前在线协同页。
-- 保留人机协同边界：不绕过验证码、支付、排队或风控。
+- Add server-time calibration and show estimated server time, latency, and local offset in the panel.
+- Add a 10:00 countdown and adjust rush refresh intervals based on distance to the target time.
+- Add page-health detection so missing plan cards can trigger a controlled health refresh.
+- Add multi-tab heartbeat status so cooperating tabs are visible in the panel.
+- Keep the human-in-loop boundary: no CAPTCHA bypass, payment bypass, queue bypass, or risk-control bypass.
 
 ## 4.2.0
 
-- 优化一键多开逻辑：先同步打开空白页，再跳转到目标页面，降低被浏览器弹窗策略拦截的概率。
-- 保留 5 页协同刷新和共享点击锁。
+- Improve one-click multi-tab opening by opening blank tabs first, then navigating them to the target page.
+- Keep 5-tab cooperative refresh and the shared click lock.
 
 ## 4.1.0
 
-- 增加 5 页协同模式。
-- 增加跨页面共享点击锁，避免多个页面重复点击。
+- Add 5-tab cooperative mode.
+- Add a shared click lock to prevent duplicate clicks across tabs.
 
 ## 4.0.0
 
-- 重写为配置化抢购助手。
-- 支持套餐优先级、订阅周期优先级、冲刺刷新、自动提醒和日志面板。
+- Rewrite as a configurable buyer assistant.
+- Add package priority, billing-period priority, rush refresh, notifications, and log panel.
