@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLM Coding Smart Buyer
 // @namespace    local.codex.bigmodel
-// @version      4.3.1
+// @version      4.3.2
 // @description  Human-in-loop watcher for BigModel GLM Coding plans. Can click buy/subscribe, but CAPTCHA/payment stay manual.
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/glm-coding*
@@ -22,12 +22,12 @@
   const SERVER_SYNC_KEY = 'glm-smart-buyer-server-sync-v4';
   const HEARTBEAT_KEY = 'glm-smart-buyer-heartbeats-v4';
   const PANEL_ID = 'glm-smart-buyer-panel';
-  const VERSION = '4.3.1';
+  const VERSION = '4.3.2';
   const MULTI_TAB_COUNT = 5;
   const TAB_ID = getTabId();
 
   const TEXT = {
-    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.1',
+    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.2',
     start: '\u5f00\u59cb\u76d1\u63a7',
     stop: '\u505c\u6b62\u76d1\u63a7',
     rushStart: '\u5f00\u542f\u51b2\u523a\u5237\u65b0',
@@ -58,7 +58,9 @@
     crowded: '\u62a2\u8d2d\u4eba\u6570\u8fc7\u591a\uff0c\u7b49\u5f85\u4e0b\u6b21\u5237\u65b0',
     available: '\u53d1\u73b0\u53ef\u8d2d\u6309\u94ae',
     clicked: '\u5df2\u70b9\u51fb\uff0c\u8bf7\u624b\u52a8\u5b8c\u6210\u9a8c\u8bc1\u7801\u548c\u4ed8\u6b3e',
-    rushWindow: '\u51b2\u523a\u7a97\u53e3 09:55-10:20',
+    rushWindow: '\u51b2\u523a\u7a97\u53e3 09:59:50-10:20',
+    soldOutWaiting: '\u552e\u7f44/\u672a\u5f00\u552e\uff0c10:00\u524d\u7ee7\u7eed\u76d1\u63a7',
+    soldOutStopped: '\u552e\u7f44\uff0c\u5df2\u505c\u6b62',
     personal: '\u4e2a\u4eba\u5957\u9910',
     month: '\u8fde\u7eed\u5305\u6708',
     quarter: '\u8fde\u7eed\u5305\u5b63',
@@ -87,7 +89,8 @@
     syncServerTime: true,
     packages: ['Pro'],
     periods: ['quarter'],
-    rushStart: '09:55',
+    configVersion: 2,
+    rushStart: '09:59:50',
     rushEnd: '10:20',
     targetTime: '10:00:00',
     scanMs: 240
@@ -96,7 +99,8 @@
   const PACKAGE_ORDER = ['Pro', 'Max', 'Lite'];
   const PERIOD_ORDER = ['quarter', 'month', 'year'];
   const PERIOD_TEXT = { month: TEXT.month, quarter: TEXT.quarter, year: TEXT.year };
-  const NEGATIVE_TEXT = /(\u552e\u7f44|\u5df2\u552e\u5b8c|\u6682\u65e0\u5e93\u5b58|\u4e0d\u53ef\u8d2d\u4e70|\u656c\u8bf7\u671f\u5f85|\u5373\u5c06\u5f00\u653e|\u5df2\u7ed3\u675f|\u6682\u65f6\u552e\u7f44|\u672a\u5f00\u552e|\u6682\u672a\u5f00\u552e)/;
+  const SOLD_OUT_TEXT = /(\u552e\u7f44|\u5df2\u552e\u5b8c|\u6682\u65e0\u5e93\u5b58|\u6682\u65f6\u552e\u7f44)/;
+  const NEGATIVE_TEXT = /(\u4e0d\u53ef\u8d2d\u4e70|\u656c\u8bf7\u671f\u5f85|\u5373\u5c06\u5f00\u653e|\u5df2\u7ed3\u675f|\u672a\u5f00\u552e|\u6682\u672a\u5f00\u552e)/;
   const CROWD_TEXT = /(\u62a2\u8d2d\u4eba\u6570\u8fc7\u591a|\u5237\u65b0\u518d\u8bd5|\u4eba\u6570\u8fc7\u591a|\u7a0d\u540e\u518d\u8bd5)/;
 
   let cfg = loadConfig();
@@ -124,9 +128,21 @@
     return Math.max(1, Math.min(99, id));
   }
 
+  function migrateConfig(config) {
+    const next = { ...config };
+    if (next.rushStart === '09:55') next.rushStart = DEFAULT_CONFIG.rushStart;
+    if (!next.configVersion || next.configVersion < 2) {
+      next.configVersion = 2;
+    }
+    return next;
+  }
   function loadConfig() {
-    try { return { ...DEFAULT_CONFIG, ...(JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}')) }; }
-    catch (_) { return { ...DEFAULT_CONFIG }; }
+    try {
+      const config = migrateConfig({ ...DEFAULT_CONFIG, ...(JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}')) });
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+      return config;
+    }
+    catch (_) { return migrateConfig({ ...DEFAULT_CONFIG }); }
   }
   function saveConfig() { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); }
   function loadServerSync() {
@@ -320,6 +336,7 @@
     const buttonText = normalize(button && button.textContent);
     const diag = PERIOD_TEXT[targetPeriod] + ' / ' + cardPackage(card) + ' / ' + describeButton(button);
     if (CROWD_TEXT.test(cardText) || CROWD_TEXT.test(buttonText)) return { state: 'crowded', card, button, diag };
+    if (SOLD_OUT_TEXT.test(cardText) || SOLD_OUT_TEXT.test(buttonText)) return { state: 'soldout', card, button, diag };
     if (NEGATIVE_TEXT.test(cardText) || NEGATIVE_TEXT.test(buttonText)) return { state: 'blocked', card, button, diag };
     if (!button) return { state: 'no-button', card, diag };
     if (isVisible(button) && isEnabled(button)) return { state: 'available', card, button, diag };
@@ -410,6 +427,25 @@
           addLog(TEXT.clicked);
         }
       }
+      writeHeartbeat();
+      renderPanel();
+      return;
+    }
+    if (target.state === 'soldout') {
+      if (countdownMs() <= 0) {
+        cfg.enabled = false;
+        cfg.rush = false;
+        saveConfig();
+        stopTimers();
+        lastStatus = TEXT.soldOutStopped;
+        lastHealth = TEXT.healthOk;
+        addLog(TEXT.soldOutStopped + ': ' + lastDiag);
+        writeHeartbeat();
+        renderPanel();
+        return;
+      }
+      lastStatus = TEXT.soldOutWaiting;
+      scheduleReload(false, TEXT.rushReload);
       writeHeartbeat();
       renderPanel();
       return;

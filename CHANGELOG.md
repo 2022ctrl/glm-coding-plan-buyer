@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.2
+
+- Start the default rush refresh window at 09:59:50.
+- Migrate existing 09:55 rush-start settings to 09:59:50.
+- Keep monitoring before 10:00 when the target shows sold-out or unavailable-style text.
+- Stop monitoring after 10:00 only when the target card is confirmed sold out.
+
 ## 4.3.1
 
 - Fix v4.3.0 runtime initialization failure caused by missing state declarations.
