@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.3.3
+
+- Fix false stopping after 10:00 when the sold-out button still shows today's restock date.
+- Stop after sold-out only when the restock date has moved to a future day, such as the next day.
+- Show clearer status text when the same-day sold-out state should keep monitoring.
+
 ## 4.3.2
 
 - Start the default rush refresh window at 09:59:50.

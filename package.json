@@ -1,6 +1,6 @@
 {
   "name": "glm-coding-plan-buyer",
-  "version": "4.3.2",
+  "version": "4.3.3",
   "private": true,
   "description": "Human-in-loop Tampermonkey watcher for BigModel GLM Coding Plan.",
   "scripts": {

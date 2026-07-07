@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLM Coding Smart Buyer
 // @namespace    local.codex.bigmodel
-// @version      4.3.2
+// @version      4.3.3
 // @description  Human-in-loop watcher for BigModel GLM Coding plans. Can click buy/subscribe, but CAPTCHA/payment stay manual.
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/glm-coding*
@@ -22,12 +22,12 @@
   const SERVER_SYNC_KEY = 'glm-smart-buyer-server-sync-v4';
   const HEARTBEAT_KEY = 'glm-smart-buyer-heartbeats-v4';
   const PANEL_ID = 'glm-smart-buyer-panel';
-  const VERSION = '4.3.2';
+  const VERSION = '4.3.3';
   const MULTI_TAB_COUNT = 5;
   const TAB_ID = getTabId();
 
   const TEXT = {
-    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.2',
+    title: 'GLM \u62a2\u8d2d\u52a9\u624b v4.3.3',
     start: '\u5f00\u59cb\u76d1\u63a7',
     stop: '\u505c\u6b62\u76d1\u63a7',
     rushStart: '\u5f00\u542f\u51b2\u523a\u5237\u65b0',
@@ -60,7 +60,8 @@
     clicked: '\u5df2\u70b9\u51fb\uff0c\u8bf7\u624b\u52a8\u5b8c\u6210\u9a8c\u8bc1\u7801\u548c\u4ed8\u6b3e',
     rushWindow: '\u51b2\u523a\u7a97\u53e3 09:59:50-10:20',
     soldOutWaiting: '\u552e\u7f44/\u672a\u5f00\u552e\uff0c10:00\u524d\u7ee7\u7eed\u76d1\u63a7',
-    soldOutStopped: '\u552e\u7f44\uff0c\u5df2\u505c\u6b62',
+    soldOutSameDay: '\u552e\u7f44\uff0c\u4ecd\u662f\u4eca\u65e5\u8865\u8d27\uff0c\u7ee7\u7eed\u76d1\u63a7',
+    soldOutStopped: '\u68c0\u6d4b\u5230\u4e0b\u6b21\u8865\u8d27\u65e5\uff0c\u5df2\u505c\u6b62',
     personal: '\u4e2a\u4eba\u5957\u9910',
     month: '\u8fde\u7eed\u5305\u6708',
     quarter: '\u8fde\u7eed\u5305\u5b63',
@@ -202,6 +203,24 @@
     return Date.UTC(parts.year, parts.month - 1, parts.day, hour - 8, minute, second, 0);
   }
   function countdownMs() { return targetTodayMs() - serverNowMs(); }
+  function chinaDayStartMs(ms) {
+    const parts = chinaParts(ms);
+    return Date.UTC(parts.year, parts.month - 1, parts.day, -8, 0, 0, 0);
+  }
+  function restockDayFromText(text) {
+    const match = /(\d{1,2})\u6708(\d{1,2})\u65e5\s*10:00\s*\u8865\u8d27/.exec(text || '');
+    if (!match) return null;
+    const nowParts = chinaParts(serverNowMs());
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    let dayMs = Date.UTC(nowParts.year, month - 1, day, -8, 0, 0, 0);
+    const todayMs = chinaDayStartMs(serverNowMs());
+    if (dayMs < todayMs - 180 * 86400000) dayMs = Date.UTC(nowParts.year + 1, month - 1, day, -8, 0, 0, 0);
+    return { dayMs, text: match[0] };
+  }
+  function isFutureRestock(target) {
+    return Boolean(target && target.restockDayMs && target.restockDayMs > chinaDayStartMs(serverNowMs()));
+  }
   function inRushWindow() { const now = nowChinaSeconds(); return now >= secondsOfDay(cfg.rushStart) && now <= secondsOfDay(cfg.rushEnd); }
   function tabOffsetMs() { return ((TAB_ID - 1) % MULTI_TAB_COUNT) * 420; }
   function jitter(min, max) { return min + Math.random() * (max - min); }
@@ -336,7 +355,10 @@
     const buttonText = normalize(button && button.textContent);
     const diag = PERIOD_TEXT[targetPeriod] + ' / ' + cardPackage(card) + ' / ' + describeButton(button);
     if (CROWD_TEXT.test(cardText) || CROWD_TEXT.test(buttonText)) return { state: 'crowded', card, button, diag };
-    if (SOLD_OUT_TEXT.test(cardText) || SOLD_OUT_TEXT.test(buttonText)) return { state: 'soldout', card, button, diag };
+    if (SOLD_OUT_TEXT.test(cardText) || SOLD_OUT_TEXT.test(buttonText)) {
+      const restock = restockDayFromText(cardText + ' ' + buttonText);
+      return { state: 'soldout', card, button, diag: diag + (restock ? ' | ' + restock.text : ''), restockDayMs: restock && restock.dayMs, restockText: restock && restock.text };
+    }
     if (NEGATIVE_TEXT.test(cardText) || NEGATIVE_TEXT.test(buttonText)) return { state: 'blocked', card, button, diag };
     if (!button) return { state: 'no-button', card, diag };
     if (isVisible(button) && isEnabled(button)) return { state: 'available', card, button, diag };
@@ -432,19 +454,19 @@
       return;
     }
     if (target.state === 'soldout') {
-      if (countdownMs() <= 0) {
+      if (countdownMs() <= 0 && isFutureRestock(target)) {
         cfg.enabled = false;
         cfg.rush = false;
         saveConfig();
         stopTimers();
         lastStatus = TEXT.soldOutStopped;
         lastHealth = TEXT.healthOk;
-        addLog(TEXT.soldOutStopped + ': ' + lastDiag);
+        addLog(TEXT.soldOutStopped + ': ' + (target.restockText || lastDiag));
         writeHeartbeat();
         renderPanel();
         return;
       }
-      lastStatus = TEXT.soldOutWaiting;
+      lastStatus = countdownMs() <= 0 ? TEXT.soldOutSameDay : TEXT.soldOutWaiting;
       scheduleReload(false, TEXT.rushReload);
       writeHeartbeat();
       renderPanel();
